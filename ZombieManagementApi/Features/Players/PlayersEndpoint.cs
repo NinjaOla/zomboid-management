@@ -6,7 +6,7 @@ public static class PlayersEndpoint
 {
     public static IEndpointRouteBuilder MapPlayers(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/server/players", async (IRconClient rcon, CancellationToken cancellationToken) =>
+        app.MapGet("/players", async (IRconClient rcon, CancellationToken cancellationToken) =>
         {
             try
             {
