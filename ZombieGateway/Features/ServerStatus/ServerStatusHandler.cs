@@ -20,10 +20,17 @@ public sealed class ServerStatusHandler
         return allowed ? null : reason;
     }
 
-    public async Task<string> ExecuteAsync()
+    public async Task<HandlerResult> ExecuteAsync()
     {
-        var status = await _server.GetStatusAsync(CancellationToken.None);
-        var emoji = status.IsOnline ? "🟢" : "🔴";
-        return $"{emoji} `{status.RawStatus}`";
+        try
+        {
+            var status = await _server.GetStatusAsync(CancellationToken.None);
+            var emoji = status.IsOnline ? "🟢" : "🔴";
+            return HandlerResult.Ok($"{emoji} `{status.RawStatus}`");
+        }
+        catch (Exception ex)
+        {
+            return HandlerResult.Unreachable(ex);
+        }
     }
 }

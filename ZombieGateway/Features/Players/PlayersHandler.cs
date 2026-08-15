@@ -20,6 +20,16 @@ public sealed class PlayersHandler
         return allowed ? null : reason;
     }
 
-    public async Task<string> ExecuteAsync() =>
-        await _rcon.GetPlayersAsync(CancellationToken.None);
+    public async Task<HandlerResult> ExecuteAsync()
+    {
+        try
+        {
+            var output = await _rcon.GetPlayersAsync(CancellationToken.None);
+            return HandlerResult.Ok(output);
+        }
+        catch (Exception ex)
+        {
+            return HandlerResult.Unreachable(ex);
+        }
+    }
 }

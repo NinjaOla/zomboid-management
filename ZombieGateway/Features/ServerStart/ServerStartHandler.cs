@@ -20,6 +20,18 @@ public sealed class ServerStartHandler
         return allowed ? null : reason;
     }
 
-    public async Task<string> ExecuteAsync() =>
-        (await _server.StartAsync(CancellationToken.None)).Message;
+    public async Task<HandlerResult> ExecuteAsync()
+    {
+        try
+        {
+            var result = await _server.StartAsync(CancellationToken.None);
+            return result.Success
+                ? HandlerResult.Ok(result.Message)
+                : HandlerResult.Fail(result.Message);
+        }
+        catch (Exception ex)
+        {
+            return HandlerResult.Unreachable(ex);
+        }
+    }
 }

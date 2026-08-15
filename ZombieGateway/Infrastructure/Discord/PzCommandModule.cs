@@ -63,9 +63,9 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
             return;
         }
         var result = await _start.ExecuteAsync();
-        activity?.SetTag("result", result);
-        _logger.LogInformation("/pz start result: {Result}", result);
-        await RespondAsync(result, ephemeral: true);
+        if (!result.Success) { _metrics.RecordError("start", userId, username); activity?.SetStatus(ActivityStatusCode.Error, result.Message); _logger.LogError(result.Exception, "/pz start failed for {User}.", username); }
+        else { activity?.SetTag("result", result.Message); _logger.LogInformation("/pz start result: {Result}", result.Message); }
+        await RespondAsync(result.Message, ephemeral: true);
     }
 
     [SlashCommand("stop", "Stops the zomboid server if it is online.")]
@@ -85,9 +85,9 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
             return;
         }
         var result = await _stop.ExecuteAsync();
-        activity?.SetTag("result", result);
-        _logger.LogInformation("/pz stop result: {Result}", result);
-        await RespondAsync(result, ephemeral: true);
+        if (!result.Success) { _metrics.RecordError("stop", userId, username); activity?.SetStatus(ActivityStatusCode.Error, result.Message); _logger.LogError(result.Exception, "/pz stop failed for {User}.", username); }
+        else { activity?.SetTag("result", result.Message); _logger.LogInformation("/pz stop result: {Result}", result.Message); }
+        await RespondAsync(result.Message, ephemeral: true);
     }
 
     [SlashCommand("status", "Gets the status of the zomboid systemd service.")]
@@ -107,9 +107,9 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
             return;
         }
         var result = await _status.ExecuteAsync();
-        activity?.SetTag("result", result);
-        _logger.LogInformation("/pz status result: {Result}", result);
-        await RespondAsync(result, ephemeral: true);
+        if (!result.Success) { _metrics.RecordError("status", userId, username); activity?.SetStatus(ActivityStatusCode.Error, result.Message); _logger.LogError(result.Exception, "/pz status failed for {User}.", username); }
+        else { activity?.SetTag("result", result.Message); _logger.LogInformation("/pz status result: {Result}", result.Message); }
+        await RespondAsync(result.Message, ephemeral: true);
     }
 
     [SlashCommand("players", "Gets player count/list from RCON.")]
@@ -128,20 +128,18 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
             await RespondAsync(deny, ephemeral: true);
             return;
         }
-        try
-        {
-            var output = await _players.ExecuteAsync();
-            activity?.SetTag("player_output_length", output.Length);
-            _logger.LogInformation("/pz players returned output ({Length} chars)", output.Length);
-            await RespondAsync($"```{output}```", ephemeral: true);
-        }
-        catch (Exception ex)
+        var result = await _players.ExecuteAsync();
+        if (!result.Success)
         {
             _metrics.RecordError("players", userId, username);
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            _logger.LogError(ex, "/pz players failed for {User}.", username);
-            await RespondAsync("Failed to query players via RCON.", ephemeral: true);
+            activity?.SetStatus(ActivityStatusCode.Error, result.Message);
+            _logger.LogError(result.Exception, "/pz players failed for {User}.", username);
+            await RespondAsync(result.Message, ephemeral: true);
+            return;
         }
+        activity?.SetTag("player_output_length", result.Message.Length);
+        _logger.LogInformation("/pz players returned output ({Length} chars)", result.Message.Length);
+        await RespondAsync($"```{result.Message}```", ephemeral: true);
     }
 
     [SlashCommand("allow", "Allow a Discord user ID to execute a command.")]
