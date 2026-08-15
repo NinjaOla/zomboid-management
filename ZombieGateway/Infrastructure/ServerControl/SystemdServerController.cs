@@ -18,6 +18,11 @@ public sealed class SystemdServerController : IServerController
     {
         var result = await RunSystemctlAsync($"is-active {_options.SystemdServiceName}", cancellationToken);
         var status = result.StdOut.Trim();
+
+        // Exit code 4 means the unit was not found at all
+        if (result.ExitCode == 4 || string.Equals(status, "unknown", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"systemd unit '{_options.SystemdServiceName}' not found on this host.");
+
         var isOnline = string.Equals(status, "active", StringComparison.OrdinalIgnoreCase);
         return new ServiceStatusResult(isOnline, string.IsNullOrWhiteSpace(status) ? result.StdErr.Trim() : status);
     }
