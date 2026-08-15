@@ -1,66 +1,157 @@
 # Zombie Gateway
 
-Management gateway for a Project Zomboid server with:
+A Discord bot + management API for controlling a Project Zomboid dedicated server.
 
-- ASP.NET Core minimal API host
-- Discord.Net slash command worker
-- Per-command user allowlist and channel allowlist
-- local or remote systemd control hooks (`start`, `stop`, `status`)
-- RCON players command hook
-- OpenTelemetry tracing export
+## Architecture
 
-## Bootstrap
-
-```bash
-dotnet restore
-dotnet run --project ZombieGateway/ZombieGateway.csproj
+```
+Discord ──► ZombieGateway  ──(HTTP)──► ZombieManagementApi ──► systemd / RCON
+                │                              │
+                └── local systemd/RCON         └── runs on the game server host
+                    (if no BaseUrl set)
 ```
 
-### Remote management API (run on server host)
+Two deployment modes:
+
+| Mode | When | How |
+|------|------|-----|
+| **Remote** | Game server is on a different machine | Set `ManagementApi:BaseUrl` in the gateway; run `ZombieManagementApi` on the server host |
+| **Local** | Gateway runs on the same machine as the game server | Leave `ManagementApi:BaseUrl` empty; gateway talks to systemd/RCON directly |
+
+If the server cannot be reached (service not found, systemd not available, RCON refused, API down), Discord responds with a friendly **⚠️ Could not reach the server** message instead of an error.
+
+## Projects
+
+| Project | Purpose |
+|---------|---------|
+| `ZombieGateway` | Discord bot + HTTP host. Runs anywhere. |
+| `ZombieManagementApi` | Minimal API with API-key auth. Runs on the game server host. |
+| `ZombieGateway.AppHost` | .NET Aspire AppHost for local development. |
+| `ZombieGateway.ServiceDefaults` | Shared OpenTelemetry + health check configuration. |
+
+## Running with Aspire (recommended for local dev)
 
 ```bash
-dotnet run --project ZombieManagementApi/ZombieManagementApi.csproj
+# Set the shared API key secret (once)
+dotnet user-secrets set "Parameters:management-api-key" "your-secret-key" \
+  --project ZombieGateway.AppHost
+
+dotnet run --project ZombieGateway.AppHost
 ```
 
-## Configure
+Aspire starts both services, wires `ManagementApi:BaseUrl` automatically, and opens the dashboard at `https://localhost:15888` with live logs, traces, and metrics.
 
-Edit `ZombieGateway/appsettings.json`:
+## Running standalone
 
-- `Discord.BotToken`: Discord bot token
-- `Discord.AdminUserId`: single admin user id
-- `Discord.GuildId`: guild id for fast slash command registration
-- `Authorization.StoragePath`: allowlist file path
-- `ManagementApi.BaseUrl`: optional base URL for remote management API (for example `http://192.168.1.50:5005`)
-- `ManagementApi.ApiKey`: shared API key for remote management API
-- `Zomboid.SystemdServiceName`: systemd unit name
-- `Zomboid.RconHost` / `RconPort` / `RconPassword`: RCON settings
-- `OpenTelemetry.Otlp.Endpoint`: optional OTLP collector endpoint
+### Gateway (your machine or any host)
 
-If `ManagementApi.BaseUrl` is set, the gateway routes `/start`, `/stop`, `/status`, and `/players` through that API instead of local systemd/RCON.
+```bash
+dotnet run --project ZombieGateway
+```
 
-Edit `ZombieManagementApi/appsettings.json` on the server host:
+### Management API (game server host)
 
-- `ManagementAuth.ApiKey`: shared API key expected in `X-Api-Key`
-- `Zomboid.*`: local systemd/RCON settings on the server machine
+```bash
+dotnet run --project ZombieManagementApi
+```
 
-Exposed authenticated endpoints:
+## Configuration
 
-- `GET /server/status`
-- `POST /server/start`
-- `POST /server/stop`
-- `GET /server/players`
+### ZombieGateway — `appsettings.json`
 
-## Slash commands
+| Key | Description |
+|-----|-------------|
+| `Discord:BotToken` | Discord bot token |
+| `Discord:AdminUserId` | Discord user ID with admin privileges |
+| `Discord:GuildId` | Guild ID for slash command registration |
+| `Discord:RegisterCommandsGlobally` | `true` to register commands globally (default `false`) |
+| `Authorization:StoragePath` | Path to allowlist JSON file (default `Data/allowlist.json`) |
+| `ManagementApi:BaseUrl` | Base URL of `ZombieManagementApi` (e.g. `http://192.168.1.50:5005`). Leave empty to use local systemd/RCON. |
+| `ManagementApi:ApiKey` | API key sent to the management API in `X-Api-Key` |
+| `Zomboid:SystemdServiceName` | systemd unit name (default `zomboid-server`) |
+| `Zomboid:RconHost` / `RconPort` / `RconPassword` | RCON connection details |
+| `Zomboid:CommandTimeoutSeconds` | Timeout for systemd/RCON calls (default `10`) |
 
-User commands:
+### ZombieManagementApi — `appsettings.json` (on the game server)
 
-- `/start`
-- `/stop`
-- `/status`
-- `/players`
+| Key | Description |
+|-----|-------------|
+| `ManagementAuth:ApiKey` | Expected value of `X-Api-Key` header |
+| `Zomboid:SystemdServiceName` | systemd unit name |
+| `Zomboid:RconHost` / `RconPort` / `RconPassword` | RCON connection details |
+| `Zomboid:CommandTimeoutSeconds` | Timeout for systemd/RCON calls |
 
-Admin commands:
+### Management API endpoints
 
-- `/allow id command`
-- `/disallow id command`
-- `/channel action channelid`
+All endpoints require `X-Api-Key` header.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/server/status` | Returns `{ isOnline, rawStatus }` |
+| `POST` | `/server/start` | Starts the systemd service |
+| `POST` | `/server/stop` | Stops the systemd service |
+| `GET` | `/server/players` | Returns RCON `players` output |
+
+## Discord slash commands
+
+All commands are in the `/pz` group.
+
+### User commands
+
+| Command | Description | Control path |
+|---------|-------------|--------------|
+| `/pz start` | Starts the server | systemd `start` |
+| `/pz stop` | Stops the server | systemd `stop` |
+| `/pz status` | Shows 🟢/🔴 and systemd status | systemd `is-active` |
+| `/pz players` | Lists connected players | RCON `players` |
+
+### Admin commands (AdminUserId only)
+
+| Command | Description |
+|---------|-------------|
+| `/pz allow <id> <command>` | Allow a Discord user ID to run a command |
+| `/pz disallow <id> <command>` | Remove a user from a command's allowlist |
+| `/pz channel add <channelid>` | Add a channel where commands are accepted |
+| `/pz channel remove <channelid>` | Remove a channel from the allowlist |
+
+Commands are rejected with an ephemeral message if the user or channel is not on the allowlist.
+
+## Allowlist
+
+The allowlist is stored as JSON at `Authorization:StoragePath`. The admin can manage it live via `/pz allow`, `/pz disallow`, and `/pz channel` — no restart required.
+
+Each of `start`, `stop`, `status`, and `players` has an independent user list. Channel allowlist applies to all commands.
+
+## Observability
+
+Both services export OpenTelemetry logs, traces, and metrics via OTLP.
+
+When running under Aspire the endpoint is injected automatically. Standalone, set:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+```
+
+### Discord command metrics
+
+| Metric | Description | Tags |
+|--------|-------------|------|
+| `discord.command.invocations` | Total command calls | `command`, `user.id`, `user.name` |
+| `discord.command.denials` | Allowlist-denied calls | `command`, `user.id`, `user.name`, `reason` |
+| `discord.command.errors` | Failed/unreachable calls | `command`, `user.id`, `user.name` |
+
+Each command also emits a trace span (`ZombieGateway.Discord`) tagged with `command`, `user.id`, `user.name`, and result details.
+
+## GitHub Releases
+
+Tagged releases (`v*`) automatically build self-contained single-file binaries via GitHub Actions:
+
+- `zombie-gateway-linux-x64`
+- `zombie-gateway-linux-arm64`
+- `zombie-management-api-linux-x64`
+- `zombie-management-api-linux-arm64`
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
