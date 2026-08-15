@@ -13,9 +13,9 @@ public static class PlayersEndpoint
                 var output = await rcon.GetPlayersAsync(cancellationToken);
                 return Results.Ok(new PlayersResponse(output));
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.Problem(detail: ex.Message, statusCode: 503, title: "Server unreachable");
             }
         });
 

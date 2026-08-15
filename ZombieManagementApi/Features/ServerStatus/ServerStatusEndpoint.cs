@@ -8,8 +8,15 @@ public static class ServerStatusEndpoint
     {
         app.MapGet("/status", async (IServerController server, CancellationToken cancellationToken) =>
         {
-            var status = await server.GetStatusAsync(cancellationToken);
-            return Results.Ok(status);
+            try
+            {
+                var status = await server.GetStatusAsync(cancellationToken);
+                return Results.Ok(status);
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(detail: ex.Message, statusCode: 503, title: "Server unreachable");
+            }
         });
 
         return app;

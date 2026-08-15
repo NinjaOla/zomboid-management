@@ -19,6 +19,15 @@ builder.Services.AddSingleton<ApiKeyEndpointFilter>();
 
 var app = builder.Build();
 
+app.UseExceptionHandler(errorApp =>
+    errorApp.Run(async ctx =>
+    {
+        var ex = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        ctx.Response.StatusCode = 503;
+        ctx.Response.ContentType = "application/json";
+        await ctx.Response.WriteAsJsonAsync(new { error = ex?.Message ?? "Server unreachable" });
+    }));
+
 app.MapDefaultEndpoints();
 app.MapGet("/", () => Results.Ok("ZombieManagementApi is running."));
 
