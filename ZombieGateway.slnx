@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="ZombieGateway.AppHost/ZombieGateway.AppHost.csproj" />
+  <Project Path="ZombieGateway.ServiceDefaults/ZombieGateway.ServiceDefaults.csproj" />
   <Project Path="ZombieGateway/ZombieGateway.csproj" />
   <Project Path="ZombieManagementApi/ZombieManagementApi.csproj" />
 </Solution>

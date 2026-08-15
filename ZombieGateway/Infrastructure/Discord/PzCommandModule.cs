@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Discord.Interactions;
 using ZombieGateway.Features.Allowlist;
 using ZombieGateway.Features.Players;
@@ -49,6 +50,7 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     public async Task StartAsync()
     {
         var (userId, username) = UserInfo();
+        using var activity = CommandActivitySource.StartCommand("start", userId, username);
         _logger.LogInformation("/pz start invoked by {User} in channel {Channel}", username, Context.Channel.Id);
         _metrics.RecordInvocation("start", userId, username);
         var deny = await _start.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
@@ -56,10 +58,12 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         {
             _logger.LogWarning("/pz start denied for {User}: {Reason}", username, deny);
             _metrics.RecordDenial("start", userId, username, deny);
+            activity?.SetTag("denied", true);
             await RespondAsync(deny, ephemeral: true);
             return;
         }
         var result = await _start.ExecuteAsync();
+        activity?.SetTag("result", result);
         _logger.LogInformation("/pz start result: {Result}", result);
         await RespondAsync(result, ephemeral: true);
     }
@@ -68,6 +72,7 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     public async Task StopAsync()
     {
         var (userId, username) = UserInfo();
+        using var activity = CommandActivitySource.StartCommand("stop", userId, username);
         _logger.LogInformation("/pz stop invoked by {User} in channel {Channel}", username, Context.Channel.Id);
         _metrics.RecordInvocation("stop", userId, username);
         var deny = await _stop.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
@@ -75,10 +80,12 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         {
             _logger.LogWarning("/pz stop denied for {User}: {Reason}", username, deny);
             _metrics.RecordDenial("stop", userId, username, deny);
+            activity?.SetTag("denied", true);
             await RespondAsync(deny, ephemeral: true);
             return;
         }
         var result = await _stop.ExecuteAsync();
+        activity?.SetTag("result", result);
         _logger.LogInformation("/pz stop result: {Result}", result);
         await RespondAsync(result, ephemeral: true);
     }
@@ -87,6 +94,7 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     public async Task StatusAsync()
     {
         var (userId, username) = UserInfo();
+        using var activity = CommandActivitySource.StartCommand("status", userId, username);
         _logger.LogInformation("/pz status invoked by {User} in channel {Channel}", username, Context.Channel.Id);
         _metrics.RecordInvocation("status", userId, username);
         var deny = await _status.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
@@ -94,10 +102,12 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         {
             _logger.LogWarning("/pz status denied for {User}: {Reason}", username, deny);
             _metrics.RecordDenial("status", userId, username, deny);
+            activity?.SetTag("denied", true);
             await RespondAsync(deny, ephemeral: true);
             return;
         }
         var result = await _status.ExecuteAsync();
+        activity?.SetTag("result", result);
         _logger.LogInformation("/pz status result: {Result}", result);
         await RespondAsync(result, ephemeral: true);
     }
@@ -106,6 +116,7 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     public async Task PlayersAsync()
     {
         var (userId, username) = UserInfo();
+        using var activity = CommandActivitySource.StartCommand("players", userId, username);
         _logger.LogInformation("/pz players invoked by {User} in channel {Channel}", username, Context.Channel.Id);
         _metrics.RecordInvocation("players", userId, username);
         var deny = await _players.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
@@ -113,18 +124,21 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         {
             _logger.LogWarning("/pz players denied for {User}: {Reason}", username, deny);
             _metrics.RecordDenial("players", userId, username, deny);
+            activity?.SetTag("denied", true);
             await RespondAsync(deny, ephemeral: true);
             return;
         }
         try
         {
             var output = await _players.ExecuteAsync();
+            activity?.SetTag("player_output_length", output.Length);
             _logger.LogInformation("/pz players returned output ({Length} chars)", output.Length);
             await RespondAsync($"```{output}```", ephemeral: true);
         }
         catch (Exception ex)
         {
             _metrics.RecordError("players", userId, username);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             _logger.LogError(ex, "/pz players failed for {User}.", username);
             await RespondAsync("Failed to query players via RCON.", ephemeral: true);
         }

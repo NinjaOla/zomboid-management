@@ -1,9 +1,6 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using ZombieGateway.Features.Allowlist;
 using ZombieGateway.Features.Players;
 using ZombieGateway.Features.ServerStart;
@@ -15,6 +12,8 @@ using ZombieGateway.Infrastructure.ServerControl;
 using ZombieGateway.Infrastructure.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
 
 builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection(DiscordOptions.SectionName));
 builder.Services.Configure<ZomboidOptions>(builder.Configuration.GetSection(ZomboidOptions.SectionName));
@@ -31,8 +30,11 @@ builder.Services.AddSingleton<ServerStopHandler>();
 builder.Services.AddSingleton<ServerStatusHandler>();
 builder.Services.AddSingleton<PlayersHandler>();
 
-// Telemetry
+// Telemetry — register custom meter and activity source
 builder.Services.AddSingleton<CommandMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(CommandMetrics.MeterName))
+    .WithTracing(tracing => tracing.AddSource(CommandActivitySource.Name));
 
 // Server control — remote if BaseUrl configured, local otherwise
 var managementApiOptions = builder.Configuration
@@ -70,35 +72,9 @@ builder.Services.AddSingleton(sp => new InteractionService(
     }));
 builder.Services.AddHostedService<DiscordGatewayWorker>();
 
-// OpenTelemetry
-builder.Services
-    .AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService("ZombieGateway"))
-    .WithTracing(tracing =>
-    {
-        tracing.AddAspNetCoreInstrumentation();
-
-        var otlpEndpoint = builder.Configuration["OpenTelemetry:Otlp:Endpoint"];
-        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
-        {
-            tracing.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
-        }
-    })
-    .WithMetrics(metrics =>
-    {
-        metrics.AddMeter(CommandMetrics.MeterName);
-        metrics.AddAspNetCoreInstrumentation();
-
-        var otlpEndpoint = builder.Configuration["OpenTelemetry:Otlp:Endpoint"];
-        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
-        {
-            metrics.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
-        }
-    });
-
 var app = builder.Build();
 
+app.MapDefaultEndpoints();
 app.MapGet("/", () => Results.Ok("ZombieGateway is running."));
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();

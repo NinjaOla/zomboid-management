@@ -13,4 +13,8 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ZombieGateway.ServiceDefaults\ZombieGateway.ServiceDefaults.csproj" />
+  </ItemGroup>
+
 </Project>
