@@ -50,6 +50,19 @@ dotnet run --project ZombieManagementApi
 
 ## Configuration
 
+All configuration keys can be set via **environment variables** by replacing `:` with `__` (double underscore). Environment variables override `appsettings.json`.
+
+```bash
+# Examples
+Discord__BotToken=your-token
+Discord__AdminUserId=123456789
+ManagementApi__BaseUrl=http://192.168.1.50:5005
+ManagementApi__ApiKey=your-secret-key
+ManagementAuth__ApiKey=your-secret-key   # on the management API side
+```
+
+This is the recommended approach for production — keep `appsettings.json` with empty/default values and inject secrets via env vars in your systemd unit or Docker Compose file.
+
 ### ZombieGateway — `appsettings.json`
 
 | Key | Description |
