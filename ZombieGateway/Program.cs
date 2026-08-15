@@ -36,26 +36,23 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(CommandMetrics.MeterName))
     .WithTracing(tracing => tracing.AddSource(CommandActivitySource.Name));
 
-// Server control — remote if BaseUrl configured, local otherwise
+// Server control — always via ZombieManagementApi
 var managementApiOptions = builder.Configuration
     .GetSection(ManagementApiOptions.SectionName)
     .Get<ManagementApiOptions>() ?? new ManagementApiOptions();
 
-if (!string.IsNullOrWhiteSpace(managementApiOptions.BaseUrl))
+if (string.IsNullOrWhiteSpace(managementApiOptions.BaseUrl))
+    throw new InvalidOperationException(
+        "ManagementApi:BaseUrl must be configured. " +
+        "Set it to the base URL of the ZombieManagementApi (e.g. http://192.168.1.50:5005).");
+
+builder.Services.AddHttpClient<RemoteServerController>(client =>
 {
-    builder.Services.AddHttpClient<RemoteServerController>(client =>
-    {
-        client.BaseAddress = new Uri(managementApiOptions.BaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(15);
-    });
-    builder.Services.AddSingleton<IServerController>(sp => sp.GetRequiredService<RemoteServerController>());
-    builder.Services.AddSingleton<IRconClient>(sp => sp.GetRequiredService<RemoteServerController>());
-}
-else
-{
-    builder.Services.AddSingleton<IServerController, SystemdServerController>();
-    builder.Services.AddSingleton<IRconClient, ZomboidRconClient>();
-}
+    client.BaseAddress = new Uri(managementApiOptions.BaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddSingleton<IServerController>(sp => sp.GetRequiredService<RemoteServerController>());
+builder.Services.AddSingleton<IRconClient>(sp => sp.GetRequiredService<RemoteServerController>());
 
 // Discord infrastructure
 builder.Services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig

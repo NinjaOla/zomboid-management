@@ -4,21 +4,14 @@ A Discord bot + management API for controlling a Project Zomboid dedicated serve
 
 ## Architecture
 
+The gateway **always** routes commands through `ZombieManagementApi`. There is no local systemd/RCON fallback — `ManagementApi:BaseUrl` is required. If it is not set, the gateway will fail to start with a clear error message.
+
+`ZombieManagementApi` must run on the game server host (the machine where the Zomboid process and systemd unit live).
+
 ```
-Discord ──► ZombieGateway  ──(HTTP)──► ZombieManagementApi ──► systemd / RCON
-                │                              │
-                └── local systemd/RCON         └── runs on the game server host
-                    (if no BaseUrl set)
+Discord ──► ZombieGateway ──(HTTP+ApiKey)──► ZombieManagementApi ──► systemd / RCON
+                                                   (game server host)
 ```
-
-Two deployment modes:
-
-| Mode | When | How |
-|------|------|-----|
-| **Remote** | Game server is on a different machine | Set `ManagementApi:BaseUrl` in the gateway; run `ZombieManagementApi` on the server host |
-| **Local** | Gateway runs on the same machine as the game server | Leave `ManagementApi:BaseUrl` empty; gateway talks to systemd/RCON directly |
-
-If the server cannot be reached (service not found, systemd not available, RCON refused, API down), Discord responds with a friendly **⚠️ Could not reach the server** message instead of an error.
 
 ## Projects
 
