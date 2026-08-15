@@ -4,6 +4,7 @@ using ZombieGateway.Infrastructure.ServerControl;
 
 namespace ZombieGateway.Features.ServerStop;
 
+[Group("pz", "Project Zomboid server management")]
 public sealed class ServerStopCommand : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly AllowlistAuthorizationService _auth;

@@ -4,6 +4,7 @@ using ZombieGateway.Infrastructure.ServerControl;
 
 namespace ZombieGateway.Features.Players;
 
+[Group("pz", "Project Zomboid server management")]
 public sealed class PlayersCommand : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly AllowlistAuthorizationService _auth;

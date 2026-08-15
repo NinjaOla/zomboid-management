@@ -3,6 +3,7 @@ using ZombieGateway.Features.Allowlist;
 
 namespace ZombieGateway.Features.Allowlist;
 
+[Group("pz", "Project Zomboid server management")]
 public sealed class AllowlistCommands : InteractionModuleBase<SocketInteractionContext>
 {
     private static readonly HashSet<string> ValidCommands = new(StringComparer.OrdinalIgnoreCase)
