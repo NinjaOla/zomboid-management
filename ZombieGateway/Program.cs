@@ -3,40 +3,44 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using ZombieGateway.Discord;
-using ZombieGateway.Options;
-using ZombieGateway.Services;
+using ZombieGateway.Features.Allowlist;
+using ZombieGateway.Infrastructure.Configuration;
+using ZombieGateway.Infrastructure.Discord;
+using ZombieGateway.Infrastructure.ServerControl;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection(DiscordOptions.SectionName));
 builder.Services.Configure<ZomboidOptions>(builder.Configuration.GetSection(ZomboidOptions.SectionName));
-builder.Services.Configure<AuthorizationOptions>(builder.Configuration.GetSection(AuthorizationOptions.SectionName));
+builder.Services.Configure<AllowlistOptions>(builder.Configuration.GetSection(AllowlistOptions.SectionName));
 builder.Services.Configure<ManagementApiOptions>(builder.Configuration.GetSection(ManagementApiOptions.SectionName));
 
+// Allowlist feature
 builder.Services.AddSingleton<IAllowlistStore, FileAllowlistStore>();
-builder.Services.AddSingleton<ICommandAuthorizationService, CommandAuthorizationService>();
+builder.Services.AddSingleton<AllowlistAuthorizationService>();
 
+// Server control — remote if BaseUrl configured, local otherwise
 var managementApiOptions = builder.Configuration
     .GetSection(ManagementApiOptions.SectionName)
     .Get<ManagementApiOptions>() ?? new ManagementApiOptions();
 
 if (!string.IsNullOrWhiteSpace(managementApiOptions.BaseUrl))
 {
-    builder.Services.AddHttpClient<RemoteManagementClient>(client =>
+    builder.Services.AddHttpClient<RemoteServerController>(client =>
     {
         client.BaseAddress = new Uri(managementApiOptions.BaseUrl);
         client.Timeout = TimeSpan.FromSeconds(15);
     });
-    builder.Services.AddSingleton<ISystemdServiceController>(sp => sp.GetRequiredService<RemoteManagementClient>());
-    builder.Services.AddSingleton<IZomboidRconClient>(sp => sp.GetRequiredService<RemoteManagementClient>());
+    builder.Services.AddSingleton<IServerController>(sp => sp.GetRequiredService<RemoteServerController>());
+    builder.Services.AddSingleton<IRconClient>(sp => sp.GetRequiredService<RemoteServerController>());
 }
 else
 {
-    builder.Services.AddSingleton<ISystemdServiceController, SystemdServiceController>();
-    builder.Services.AddSingleton<IZomboidRconClient, ZomboidRconTcpClient>();
+    builder.Services.AddSingleton<IServerController, SystemdServerController>();
+    builder.Services.AddSingleton<IRconClient, ZomboidRconClient>();
 }
 
+// Discord infrastructure
 builder.Services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
 {
     GatewayIntents = GatewayIntents.Guilds,
@@ -51,6 +55,7 @@ builder.Services.AddSingleton(sp => new InteractionService(
     }));
 builder.Services.AddHostedService<DiscordGatewayWorker>();
 
+// OpenTelemetry
 builder.Services
     .AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("ZombieGateway"))
