@@ -4,6 +4,7 @@ using ZombieGateway.Features.Players;
 using ZombieGateway.Features.ServerStart;
 using ZombieGateway.Features.ServerStop;
 using ZombieGateway.Features.ServerStatus;
+using ZombieGateway.Infrastructure.Telemetry;
 
 namespace ZombieGateway.Infrastructure.Discord;
 
@@ -21,6 +22,7 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     private readonly PlayersHandler _players;
     private readonly AllowlistAuthorizationService _auth;
     private readonly IAllowlistStore _store;
+    private readonly CommandMetrics _metrics;
     private readonly ILogger<PzCommandModule> _logger;
 
     public PzCommandModule(
@@ -30,6 +32,7 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         PlayersHandler players,
         AllowlistAuthorizationService auth,
         IAllowlistStore store,
+        CommandMetrics metrics,
         ILogger<PzCommandModule> logger)
     {
         _start = start;
@@ -38,15 +41,24 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         _players = players;
         _auth = auth;
         _store = store;
+        _metrics = metrics;
         _logger = logger;
     }
 
     [SlashCommand("start", "Starts the zomboid server if it is offline.")]
     public async Task StartAsync()
     {
-        _logger.LogInformation("/pz start invoked by {User} in channel {Channel}", Context.User, Context.Channel.Id);
+        var (userId, username) = UserInfo();
+        _logger.LogInformation("/pz start invoked by {User} in channel {Channel}", username, Context.Channel.Id);
+        _metrics.RecordInvocation("start", userId, username);
         var deny = await _start.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
-        if (deny is not null) { _logger.LogWarning("/pz start denied for {User}: {Reason}", Context.User, deny); await RespondAsync(deny, ephemeral: true); return; }
+        if (deny is not null)
+        {
+            _logger.LogWarning("/pz start denied for {User}: {Reason}", username, deny);
+            _metrics.RecordDenial("start", userId, username, deny);
+            await RespondAsync(deny, ephemeral: true);
+            return;
+        }
         var result = await _start.ExecuteAsync();
         _logger.LogInformation("/pz start result: {Result}", result);
         await RespondAsync(result, ephemeral: true);
@@ -55,9 +67,17 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     [SlashCommand("stop", "Stops the zomboid server if it is online.")]
     public async Task StopAsync()
     {
-        _logger.LogInformation("/pz stop invoked by {User} in channel {Channel}", Context.User, Context.Channel.Id);
+        var (userId, username) = UserInfo();
+        _logger.LogInformation("/pz stop invoked by {User} in channel {Channel}", username, Context.Channel.Id);
+        _metrics.RecordInvocation("stop", userId, username);
         var deny = await _stop.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
-        if (deny is not null) { _logger.LogWarning("/pz stop denied for {User}: {Reason}", Context.User, deny); await RespondAsync(deny, ephemeral: true); return; }
+        if (deny is not null)
+        {
+            _logger.LogWarning("/pz stop denied for {User}: {Reason}", username, deny);
+            _metrics.RecordDenial("stop", userId, username, deny);
+            await RespondAsync(deny, ephemeral: true);
+            return;
+        }
         var result = await _stop.ExecuteAsync();
         _logger.LogInformation("/pz stop result: {Result}", result);
         await RespondAsync(result, ephemeral: true);
@@ -66,9 +86,17 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     [SlashCommand("status", "Gets the status of the zomboid systemd service.")]
     public async Task StatusAsync()
     {
-        _logger.LogInformation("/pz status invoked by {User} in channel {Channel}", Context.User, Context.Channel.Id);
+        var (userId, username) = UserInfo();
+        _logger.LogInformation("/pz status invoked by {User} in channel {Channel}", username, Context.Channel.Id);
+        _metrics.RecordInvocation("status", userId, username);
         var deny = await _status.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
-        if (deny is not null) { _logger.LogWarning("/pz status denied for {User}: {Reason}", Context.User, deny); await RespondAsync(deny, ephemeral: true); return; }
+        if (deny is not null)
+        {
+            _logger.LogWarning("/pz status denied for {User}: {Reason}", username, deny);
+            _metrics.RecordDenial("status", userId, username, deny);
+            await RespondAsync(deny, ephemeral: true);
+            return;
+        }
         var result = await _status.ExecuteAsync();
         _logger.LogInformation("/pz status result: {Result}", result);
         await RespondAsync(result, ephemeral: true);
@@ -77,9 +105,17 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
     [SlashCommand("players", "Gets player count/list from RCON.")]
     public async Task PlayersAsync()
     {
-        _logger.LogInformation("/pz players invoked by {User} in channel {Channel}", Context.User, Context.Channel.Id);
+        var (userId, username) = UserInfo();
+        _logger.LogInformation("/pz players invoked by {User} in channel {Channel}", username, Context.Channel.Id);
+        _metrics.RecordInvocation("players", userId, username);
         var deny = await _players.AuthorizeAsync(Context.User.Id, Context.Channel.Id);
-        if (deny is not null) { _logger.LogWarning("/pz players denied for {User}: {Reason}", Context.User, deny); await RespondAsync(deny, ephemeral: true); return; }
+        if (deny is not null)
+        {
+            _logger.LogWarning("/pz players denied for {User}: {Reason}", username, deny);
+            _metrics.RecordDenial("players", userId, username, deny);
+            await RespondAsync(deny, ephemeral: true);
+            return;
+        }
         try
         {
             var output = await _players.ExecuteAsync();
@@ -88,7 +124,8 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "/pz players failed for {User}.", Context.User);
+            _metrics.RecordError("players", userId, username);
+            _logger.LogError(ex, "/pz players failed for {User}.", username);
             await RespondAsync("Failed to query players via RCON.", ephemeral: true);
         }
     }
@@ -98,14 +135,16 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         [Summary("id", "Discord user ID")] string id,
         [Summary("command", "One of: start, stop, status, players")] string command)
     {
-        _logger.LogInformation("/pz allow invoked by {Admin} — id={Id} command={Command}", Context.User, id, command);
+        var (userId, username) = UserInfo();
+        _logger.LogInformation("/pz allow invoked by {Admin} — id={Id} command={Command}", username, id, command);
+        _metrics.RecordInvocation("allow", userId, username);
         if (!_auth.IsAdmin(Context.User.Id)) { await RespondAsync("Only the configured admin can run this command.", ephemeral: true); return; }
         if (!ValidCommands.Contains(command)) { await RespondAsync("Invalid command. Use start, stop, status, or players.", ephemeral: true); return; }
-        if (!ulong.TryParse(id, out var userId)) { await RespondAsync("Invalid user ID.", ephemeral: true); return; }
+        if (!ulong.TryParse(id, out var targetUserId)) { await RespondAsync("Invalid user ID.", ephemeral: true); return; }
 
-        await _store.AddUserToCommandAsync(command, userId, CancellationToken.None);
-        _logger.LogInformation("Allowlisted user {UserId} for command {Command}.", userId, command);
-        await RespondAsync($"Added `{userId}` to `{command}` allowlist.", ephemeral: true);
+        await _store.AddUserToCommandAsync(command, targetUserId, CancellationToken.None);
+        _logger.LogInformation("Allowlisted user {UserId} for command {Command}.", targetUserId, command);
+        await RespondAsync($"Added `{targetUserId}` to `{command}` allowlist.", ephemeral: true);
     }
 
     [SlashCommand("disallow", "Remove a Discord user ID from a command allowlist.")]
@@ -113,14 +152,16 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         [Summary("id", "Discord user ID")] string id,
         [Summary("command", "One of: start, stop, status, players")] string command)
     {
-        _logger.LogInformation("/pz disallow invoked by {Admin} — id={Id} command={Command}", Context.User, id, command);
+        var (userId, username) = UserInfo();
+        _logger.LogInformation("/pz disallow invoked by {Admin} — id={Id} command={Command}", username, id, command);
+        _metrics.RecordInvocation("disallow", userId, username);
         if (!_auth.IsAdmin(Context.User.Id)) { await RespondAsync("Only the configured admin can run this command.", ephemeral: true); return; }
         if (!ValidCommands.Contains(command)) { await RespondAsync("Invalid command. Use start, stop, status, or players.", ephemeral: true); return; }
-        if (!ulong.TryParse(id, out var userId)) { await RespondAsync("Invalid user ID.", ephemeral: true); return; }
+        if (!ulong.TryParse(id, out var targetUserId)) { await RespondAsync("Invalid user ID.", ephemeral: true); return; }
 
-        await _store.RemoveUserFromCommandAsync(command, userId, CancellationToken.None);
-        _logger.LogInformation("Removed user {UserId} from {Command} allowlist.", userId, command);
-        await RespondAsync($"Removed `{userId}` from `{command}` allowlist.", ephemeral: true);
+        await _store.RemoveUserFromCommandAsync(command, targetUserId, CancellationToken.None);
+        _logger.LogInformation("Removed user {UserId} from {Command} allowlist.", targetUserId, command);
+        await RespondAsync($"Removed `{targetUserId}` from `{command}` allowlist.", ephemeral: true);
     }
 
     [SlashCommand("channel", "Add/remove channel allowlist entries.")]
@@ -128,7 +169,9 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
         [Summary("action", "add or remove")] string action,
         [Summary("channelid", "Discord channel ID")] string channelId)
     {
-        _logger.LogInformation("/pz channel invoked by {Admin} — action={Action} channelId={ChannelId}", Context.User, action, channelId);
+        var (userId, username) = UserInfo();
+        _logger.LogInformation("/pz channel invoked by {Admin} — action={Action} channelId={ChannelId}", username, action, channelId);
+        _metrics.RecordInvocation("channel", userId, username);
         if (!_auth.IsAdmin(Context.User.Id)) { await RespondAsync("Only the configured admin can run this command.", ephemeral: true); return; }
         if (!ulong.TryParse(channelId, out var parsedId)) { await RespondAsync("Invalid channel ID.", ephemeral: true); return; }
 
@@ -149,4 +192,7 @@ public sealed class PzCommandModule : InteractionModuleBase<SocketInteractionCon
                 break;
         }
     }
+
+    private (string Id, string Name) UserInfo() =>
+        (Context.User.Id.ToString(), Context.User.Username);
 }

@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using ZombieGateway.Features.Allowlist;
@@ -11,6 +12,7 @@ using ZombieGateway.Features.ServerStatus;
 using ZombieGateway.Infrastructure.Configuration;
 using ZombieGateway.Infrastructure.Discord;
 using ZombieGateway.Infrastructure.ServerControl;
+using ZombieGateway.Infrastructure.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +30,9 @@ builder.Services.AddSingleton<ServerStartHandler>();
 builder.Services.AddSingleton<ServerStopHandler>();
 builder.Services.AddSingleton<ServerStatusHandler>();
 builder.Services.AddSingleton<PlayersHandler>();
+
+// Telemetry
+builder.Services.AddSingleton<CommandMetrics>();
 
 // Server control — remote if BaseUrl configured, local otherwise
 var managementApiOptions = builder.Configuration
@@ -77,6 +82,17 @@ builder.Services
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
         {
             tracing.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
+        }
+    })
+    .WithMetrics(metrics =>
+    {
+        metrics.AddMeter(CommandMetrics.MeterName);
+        metrics.AddAspNetCoreInstrumentation();
+
+        var otlpEndpoint = builder.Configuration["OpenTelemetry:Otlp:Endpoint"];
+        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+        {
+            metrics.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
         }
     });
 
