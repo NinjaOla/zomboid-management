@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ZombieGateway/ZombieGateway.csproj" />
+  <Project Path="ZombieManagementApi/ZombieManagementApi.csproj" />
+</Solution>

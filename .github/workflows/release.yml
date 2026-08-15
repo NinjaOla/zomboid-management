@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        include:
+          - project: ZombieGateway/ZombieGateway.csproj
+            name: zombie-gateway
+            rid: linux-x64
+          - project: ZombieGateway/ZombieGateway.csproj
+            name: zombie-gateway
+            rid: linux-arm64
+          - project: ZombieManagementApi/ZombieManagementApi.csproj
+            name: zombie-management-api
+            rid: linux-x64
+          - project: ZombieManagementApi/ZombieManagementApi.csproj
+            name: zombie-management-api
+            rid: linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish self-contained
+        run: |
+          dotnet publish ${{ matrix.project }} \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            /p:PublishSingleFile=true \
+            /p:PublishTrimmed=false \
+            -o out/${{ matrix.name }}-${{ matrix.rid }}
+
+      - name: Pack artifact
+        run: |
+          tar -czf ${{ matrix.name }}-${{ matrix.rid }}.tar.gz \
+            -C out ${{ matrix.name }}-${{ matrix.rid }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "${{ matrix.name }}-${{ matrix.rid }}.tar.gz"
