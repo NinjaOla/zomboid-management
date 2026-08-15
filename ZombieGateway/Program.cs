@@ -4,6 +4,10 @@ using Discord.WebSocket;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using ZombieGateway.Features.Allowlist;
+using ZombieGateway.Features.Players;
+using ZombieGateway.Features.ServerStart;
+using ZombieGateway.Features.ServerStop;
+using ZombieGateway.Features.ServerStatus;
 using ZombieGateway.Infrastructure.Configuration;
 using ZombieGateway.Infrastructure.Discord;
 using ZombieGateway.Infrastructure.ServerControl;
@@ -18,6 +22,12 @@ builder.Services.Configure<ManagementApiOptions>(builder.Configuration.GetSectio
 // Allowlist feature
 builder.Services.AddSingleton<IAllowlistStore, FileAllowlistStore>();
 builder.Services.AddSingleton<AllowlistAuthorizationService>();
+
+// Feature handlers
+builder.Services.AddSingleton<ServerStartHandler>();
+builder.Services.AddSingleton<ServerStopHandler>();
+builder.Services.AddSingleton<ServerStatusHandler>();
+builder.Services.AddSingleton<PlayersHandler>();
 
 // Server control — remote if BaseUrl configured, local otherwise
 var managementApiOptions = builder.Configuration
